@@ -8,6 +8,8 @@ class EventoSerializer(serializers.ModelSerializer):
     espaco_id = serializers.IntegerField(
         write_only=True, required=False, allow_null=True
     )
+    # Compatibilidade: aceitar envio como "espaco" (id) ou "espaco_id"
+    espaco = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     local_completo = serializers.CharField(read_only=True)
     imagem_url = serializers.SerializerMethodField()
 
@@ -28,8 +30,8 @@ class EventoSerializer(serializers.ModelSerializer):
             "id",
             "titulo",
             "descricao",
-            "espaco",
             "espaco_id",
+            "espaco",
             "espaco_nome",
             "local_texto",
             "local_completo",
@@ -47,7 +49,6 @@ class EventoSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "id",
-            "espaco",
             "created_at",
             "updated_at",
             "created_by",
@@ -86,15 +87,46 @@ class EventoSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError("Espaço não encontrado.")
         return value
 
-    def validate(self, data):
-        # Validar que pelo menos um local foi informado
-        espaco_id = data.get("espaco_id")
-        local_texto = data.get("local_texto")
+    def _get_espaco_id_from_payload(self):
+        """Extrai o id do espaço tanto de espaco_id quanto de espaco."""
+        raw_espaco_id = self.initial_data.get("espaco_id")
+        if raw_espaco_id in ("", None):
+            raw_espaco_id = self.initial_data.get("espaco")
+        if raw_espaco_id in ("", None):
+            return None
+        try:
+            return int(raw_espaco_id)
+        except (TypeError, ValueError):
+            raise serializers.ValidationError({"espaco": "ID do espaço inválido."})
 
+    def validate(self, data):
+        espaco_id = self._get_espaco_id_from_payload()
+        local_texto = self.initial_data.get("local_texto") or data.get("local_texto")
+
+        # Garantir que um dos dois seja informado
         if not espaco_id and not local_texto:
             raise serializers.ValidationError(
                 "Informe um espaço cadastrado ou descreva o local do evento."
             )
+
+        # Validar existência e status do espaço, atribuir ao data
+        if espaco_id:
+            try:
+                espaco = Espaco.objects.get(id=espaco_id)
+                if hasattr(espaco, "is_active") and not espaco.is_active:
+                    raise serializers.ValidationError(
+                        {"espaco": "O espaço selecionado está inativo."}
+                    )
+                data["espaco"] = espaco
+            except Espaco.DoesNotExist:
+                raise serializers.ValidationError({"espaco": "Espaço não encontrado."})
+        else:
+            # Quando não há espaço, garantir espaco=None no validated_data
+            data["espaco"] = None
+
+        # Normalizar local_texto
+        if local_texto is not None:
+            data["local_texto"] = local_texto
 
         ini = data.get("datetime_inicio")
         fim = data.get("datetime_fim")
@@ -107,25 +139,21 @@ class EventoSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
-        espaco_id = validated_data.pop("espaco_id", None)
-        if espaco_id:
-            validated_data["espaco"] = Espaco.objects.get(id=espaco_id)
+        # espaco já foi resolvido/normalizado em validate
+        validated_data.pop("espaco_id", None)
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
-        espaco_id = validated_data.pop("espaco_id", None)
-        if espaco_id:
-            validated_data["espaco"] = Espaco.objects.get(id=espaco_id)
-        elif (
-            "espaco_id" in self.initial_data
-            and self.initial_data["espaco_id"] is None
-        ):
-            validated_data["espaco"] = None
+        # espaco já foi resolvido/normalizado em validate
+        validated_data.pop("espaco_id", None)
         return super().update(instance, validated_data)
 
 
 class EventoListSerializer(serializers.ModelSerializer):
     local_completo = serializers.CharField(read_only=True)
+    local_texto = serializers.CharField(read_only=True)
+    espaco_id = serializers.SerializerMethodField()
+    espaco_nome = serializers.SerializerMethodField()
     imagem_url = serializers.SerializerMethodField()
     data_evento = serializers.SerializerMethodField()
     hora_inicio = serializers.SerializerMethodField()
@@ -137,6 +165,9 @@ class EventoListSerializer(serializers.ModelSerializer):
             "id",
             "titulo",
             "descricao",
+            "espaco_id",
+            "espaco_nome",
+            "local_texto",
             "local_completo",
             "data_evento",
             "hora_inicio",
@@ -146,6 +177,12 @@ class EventoListSerializer(serializers.ModelSerializer):
             "datetime_inicio",
             "datetime_fim",
         ]
+
+    def get_espaco_id(self, obj):
+        return obj.espaco_id
+
+    def get_espaco_nome(self, obj):
+        return getattr(obj.espaco, "nome", None)
 
     def get_imagem_url(self, obj):
         if obj.imagem:
