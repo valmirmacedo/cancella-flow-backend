@@ -1,4 +1,4 @@
-from cadastros.models import Condominio
+from cadastros.models import Condominio, UnidadeUnidade
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.core.exceptions import ValidationError
@@ -22,7 +22,7 @@ class UserCreateView(APIView):
         if user_type == "sindico":
             if not (
                 request.user.is_staff
-                or request.user.groups.filter(name="admin").exists()
+                or request.user.groups.filter(name__iexact="admin").exists()
             ):
                 return Response(
                     {"error": "Apenas administradores podem criar síndicos"},
@@ -33,8 +33,8 @@ class UserCreateView(APIView):
         elif user_type in ["funcionario", "morador"]:
             if not (
                 request.user.is_staff
-                or request.user.groups.filter(name="admin").exists()
-                or request.user.groups.filter(name="Síndicos").exists()
+                or request.user.groups.filter(name__iexact="admin").exists()
+                or request.user.groups.filter(name__iexact="Síndicos").exists()
             ):
                 return Response(
                     {"error": "Acesso negado para criar este tipo de usuário"},
@@ -70,9 +70,6 @@ class UserCreateView(APIView):
                         condominio = Condominio.objects.get(id=condominio_id)
                     except Condominio.DoesNotExist:
                         condominio = None
-
-            # Obter unidade se fornecida
-            from cadastros.models import Unidade
 
             unidade = None
             unidade_id = request.data.get("unidade_id")
