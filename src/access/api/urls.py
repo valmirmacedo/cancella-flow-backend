@@ -20,7 +20,7 @@ urlpatterns = [
     ),
     path("profile/", views.ProfileView.as_view(), name="profile"),
     path(
-        "profile/<int:user_id>/",
+        "profile/<uuid:user_id>/",
         views.ProfileView.as_view(),
         name="update-user",
     ),
