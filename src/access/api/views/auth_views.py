@@ -20,9 +20,17 @@ class LoginView(View):
         return response
 
     def post(self, request, *args, **kwargs):
-        data = json.loads(request.body)
-        username = data.get("username")
-        password = data.get("password")
+        try:
+            data = json.loads(request.body)
+        except Exception:
+            return JsonResponse({"error": "JSON inválido"}, status=400)
+
+        username = (data.get("username") or "").strip().lower()
+        password = data.get("password") or ""
+
+        if not username or not password:
+            return JsonResponse({"error": "Usuário e senha são obrigatórios"}, status=400)
+
         user = authenticate(request, username=username, password=password)
 
         if user is not None:

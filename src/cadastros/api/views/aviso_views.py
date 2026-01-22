@@ -27,6 +27,7 @@ def aviso_list_view(request):
     try:
         user = request.user
         avisos = Aviso.objects.select_related("grupo", "created_by")
+
         # Define se é síndico pelo nome do grupo (aceita variação sem acento)
         is_sindico = user.groups.filter(
             Q(name__iexact="Síndicos") | Q(name__iexact="Sindicos")
@@ -39,14 +40,15 @@ def aviso_list_view(request):
             # Síndico vê todos os avisos do próprio condomínio (pelo criador)
             if is_sindico and getattr(user, "condominio", None):
                 avisos = avisos.filter(created_by__condominio=user.condominio)
+                # Não mostrar avisos automáticos de encomenda para o síndico
+                # (encomendas geradas pela portaria geram avisos para moradores)
+                avisos = avisos.exclude(titulo__icontains="Nova encomenda")
             else:
                 # Demais perfis: filtrar por grupo E por condomínio do criador
                 grupos_ids = list(user.groups.values_list("id", flat=True))
                 avisos = avisos.filter(grupo_id__in=grupos_ids)
                 if getattr(user, "condominio", None):
-                    avisos = avisos.filter(
-                        created_by__condominio=user.condominio
-                    )
+                    avisos = avisos.filter(created_by__condominio=user.condominio)
 
                 # Se for morador, filtrar avisos de encomenda apenas da sua unidade
                 # Identificamos avisos de encomenda pelo título que contém "Nova encomenda"
@@ -62,16 +64,14 @@ def aviso_list_view(request):
 
                     if has_pending:
                         avisos = avisos.filter(
-                            Q(titulo__icontains="Nova encomenda")
-                            & Q(
-                                titulo__icontains=user.unidade.identificacao_completa
+                            (
+                                Q(titulo__icontains="Nova encomenda")
+                                & Q(titulo__icontains=user.unidade.identificacao_completa)
                             )
                             | ~Q(titulo__icontains="Nova encomenda")
                         )
                     else:
-                        avisos = avisos.filter(
-                            ~Q(titulo__icontains="Nova encomenda")
-                        )
+                        avisos = avisos.filter(~Q(titulo__icontains="Nova encomenda"))
 
         # Filtros
         search = request.GET.get("search", "").strip()
@@ -262,26 +262,16 @@ def aviso_detail_view(request, pk):
 def aviso_update_view(request, pk):
     try:
         aviso = Aviso.objects.get(pk=pk)
-        serializer = AvisoSerializer(
-            aviso,
-            data=request.data,
-            partial=(request.method == "PATCH"),
-            context={"request": request},
-        )
+        partial = request.method == "PATCH"
+        serializer = AvisoSerializer(aviso, data=request.data, partial=partial, context={"request": request})
         if serializer.is_valid():
             aviso = serializer.save()
             return Response(AvisoSerializer(aviso).data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     except Aviso.DoesNotExist:
-        return Response(
-            {"error": "Aviso não encontrado."},
-            status=status.HTTP_404_NOT_FOUND,
-        )
+        return Response({"error": "Aviso não encontrado."}, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
-        return Response(
-            {"error": f"Erro ao atualizar aviso: {str(e)}"},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
+        return Response({"error": f"Erro ao atualizar aviso: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(["DELETE"])

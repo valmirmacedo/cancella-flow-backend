@@ -90,7 +90,6 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "app.wsgi.application"
 
-
 DB_ENGINE = os.getenv("DB_ENGINE", "postgres")
 if DB_ENGINE == "sqlite":
     DATABASES = {
@@ -102,7 +101,7 @@ if DB_ENGINE == "sqlite":
 else:
     DATABASES = {
         "default": {
-            "ENGINE": os.getenv("DB_ENGINE"),
+            "ENGINE": "django.db.backends.postgresql",
             "NAME": os.getenv("DB_NAME"),
             "USER": os.getenv("DB_USER"),
             "PASSWORD": os.getenv("DB_PASSWORD"),
@@ -114,7 +113,6 @@ else:
             },
         }
     }
-
 DATABASE_URL = os.getenv("DATABASE_URL")
 if DATABASE_URL:
     # IMPORTANTE: Para Supabase, use Transaction Mode (porta 6543) em vez de Session Mode (porta 5432)
