@@ -85,13 +85,35 @@ def condominio_create_view(request):
         if serializer.is_valid():
             condominio = serializer.save()
             # Log para debug: verificar se o arquivo de logo foi recebido e salvo
+            # Se um arquivo 'logo' foi enviado, salvar no DB (BLOB) e remover arquivo em disco
             try:
-                logo_path = condominio.logo.url if condominio.logo else None
+                arquivo = request.FILES.get('logo')
+                if arquivo:
+                    conteúdo = arquivo.read()
+                    condominio.logo_db_data = conteúdo
+                    condominio.logo_db_content_type = getattr(arquivo, 'content_type', None)
+                    condominio.logo_db_filename = getattr(arquivo, 'name', None)
+                    # Se o serializer salvou também no FileField, remover o arquivo físico
+                    try:
+                        if condominio.logo:
+                            condominio.logo.delete(save=False)
+                            condominio.logo = None
+                    except Exception:
+                        pass
+                    condominio.save()
+
+                try:
+                    logo_path = condominio.logo.url if condominio.logo else None
+                except Exception:
+                    logo_path = None
+                print(
+                    f"[condominio_create_view] Condominio criado id={condominio.id}, logo_db_saved={'yes' if arquivo else 'no'}, logo={logo_path}"
+                )
             except Exception:
-                logo_path = None
-            print(
-                f"[condominio_create_view] Condominio criado id={condominio.id}, logo={logo_path}"
-            )
+                # Não bloquear criação por problema com upload; apenas logar
+                import traceback
+
+                traceback.print_exc()
             return Response(
                 CondominioSerializer(
                     condominio, context={"request": request}
@@ -165,14 +187,33 @@ def condominio_update_view(request, pk):
 
         if serializer.is_valid():
             condominio = serializer.save()
-            # Log para debug: confirmar logo atualizada
+            # Se um arquivo 'logo' foi enviado, salvar no DB (BLOB) e remover arquivo em disco
             try:
-                logo_path = condominio.logo.url if condominio.logo else None
+                arquivo = request.FILES.get('logo')
+                if arquivo:
+                    conteúdo = arquivo.read()
+                    condominio.logo_db_data = conteúdo
+                    condominio.logo_db_content_type = getattr(arquivo, 'content_type', None)
+                    condominio.logo_db_filename = getattr(arquivo, 'name', None)
+                    try:
+                        if condominio.logo:
+                            condominio.logo.delete(save=False)
+                            condominio.logo = None
+                    except Exception:
+                        pass
+                    condominio.save()
+
+                try:
+                    logo_path = condominio.logo.url if condominio.logo else None
+                except Exception:
+                    logo_path = None
+                print(
+                    f"[condominio_update_view] Condominio id={condominio.id} atualizado, logo_db_saved={'yes' if arquivo else 'no'}, logo={logo_path}"
+                )
             except Exception:
-                logo_path = None
-            print(
-                f"[condominio_update_view] Condominio id={condominio.id} atualizado, logo={logo_path}"
-            )
+                import traceback
+
+                traceback.print_exc()
             return Response(
                 CondominioSerializer(
                     condominio, context={"request": request}
